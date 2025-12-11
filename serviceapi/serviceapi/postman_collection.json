@@ -1,0 +1,169 @@
+{
+  "info": {
+    "name": "Permissions API",
+    "description": "Коллекция запросов для микросервиса управления правами",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Set Permissions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"admin_token_123\",\n  \"categories\": [1],\n  \"indexes\": [10],\n  \"permissions_values\": [1, 2, 3, 4]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/permissions/sets/V0Post",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["permissions", "sets", "V0Post"]
+        }
+      }
+    },
+    {
+      "name": "Add Permissions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"admin_token_123\",\n  \"categories\": [1],\n  \"indexes\": [10],\n  \"permissions_values\": [3, 4]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/permissions/adds/V0Post",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["permissions", "adds", "V0Post"]
+        }
+      }
+    },
+    {
+      "name": "Remove Permissions",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"admin_token_123\",\n  \"categories\": [1],\n  \"indexes\": [10],\n  \"permissions_values\": [2]\n}"
+        },
+        "url": {
+          "raw": "http://localhost:3000/permissions/removes/V0Post",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["permissions", "removes", "V0Post"]
+        }
+      }
+    },
+    {
+      "name": "List Permissions (with filters)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/permissions/lists/V0Get?token=admin_token_123&categories=1&indexes=10",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["permissions", "lists", "V0Get"],
+          "query": [
+            {
+              "key": "token",
+              "value": "admin_token_123"
+            },
+            {
+              "key": "categories",
+              "value": "1"
+            },
+            {
+              "key": "indexes",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "List Permissions (all users)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/permissions/lists/V0Get?token=admin_token_123",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["permissions", "lists", "V0Get"],
+          "query": [
+            {
+              "key": "token",
+              "value": "admin_token_123"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "List Permissions (empty result - returns allowed permissions)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/permissions/lists/V0Get?token=admin_token_123&categories=999&indexes=999",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "3000",
+          "path": ["permissions", "lists", "V0Get"],
+          "query": [
+            {
+              "key": "token",
+              "value": "admin_token_123"
+            },
+            {
+              "key": "categories",
+              "value": "999"
+            },
+            {
+              "key": "indexes",
+              "value": "999"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+
