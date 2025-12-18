@@ -20,6 +20,7 @@ DB_CONFIG = {
 
 BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 GRAMS_SERVICE_URL = os.getenv('GRAMS_SERVICE_URL', 'http://localhost:3003')
+TRANSLATIONS_SERVICE_URL = os.getenv('TRANSLATIONS_SERVICE_URL', 'http://localhost:3000')
 PERMISSIONS_TOKEN = os.getenv('PERMISSIONS_TOKEN', '')
 
 # Директория для хранения изображений
@@ -180,6 +181,202 @@ async def get_image_hash(file_path: Path) -> str:
     return sha256_hash.hexdigest()
 
 
+# Кэш для типов еды из микросервиса переводов
+_food_types_cache = None
+
+
+async def get_food_types_from_translations_service() -> set:
+    """Получает список типов еды из микросервиса переводов
+    
+    Returns:
+        set: Множество типов, которые содержат "Food" в названии
+    """
+    global _food_types_cache
+    
+    if _food_types_cache is not None:
+        return _food_types_cache
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{TRANSLATIONS_SERVICE_URL}/Translations/Alls/V0Get",
+                params={"target": "types"}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    food_types = set()
+                    
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict):
+                                for key in ['type', 'name', 'category', 'value']:
+                                    if key in item:
+                                        type_value = str(item[key])
+                                        if 'Food' in type_value or 'food' in type_value.lower():
+                                            food_types.add(type_value)
+                            elif isinstance(item, str):
+                                if 'Food' in item or 'food' in item.lower():
+                                    food_types.add(item)
+                    elif isinstance(data, dict):
+                        for key, value in data.items():
+                            if isinstance(value, (list, dict)):
+                                if isinstance(value, list):
+                                    for v in value:
+                                        if isinstance(v, dict):
+                                            for k in ['type', 'name', 'category', 'value']:
+                                                if k in v:
+                                                    type_val = str(v[k])
+                                                    if 'Food' in type_val or 'food' in type_val.lower():
+                                                        food_types.add(type_val)
+                                        elif isinstance(v, str):
+                                            if 'Food' in v or 'food' in v.lower():
+                                                food_types.add(v)
+                            elif isinstance(value, str):
+                                if 'Food' in value or 'food' in value.lower():
+                                    food_types.add(value)
+                    
+                    _food_types_cache = food_types
+                    print(f"Загружено типов еды из микросервиса: {len(food_types)}")
+                    return food_types
+                else:
+                    print(f"Ошибка получения типов из микросервиса переводов: {response.status}")
+                    text = await response.text()
+                    print(f"Details: {text}")
+                    _food_types_cache = set()
+                    return set()
+    except Exception as e:
+        print(f"Ошибка запроса к микросервису переводов: {e}")
+        _food_types_cache = set()
+        return set()
+
+
+async def translate_ingredient(ingredient_name: str) -> str:
+    """Переводит название ингредиента через микросервис переводов
+    
+    Args:
+        ingredient_name: Название ингредиента на английском
+    
+    Returns:
+        str: Переведенное название или оригинальное, если перевод не удался
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{TRANSLATIONS_SERVICE_URL}/Translations/Alls/V0Get",
+                params={"target": "translations", "term": ingredient_name}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    if isinstance(data, dict):
+                        for key in ['translation', 'translated', 'value', 'text', 'name']:
+                            if key in data:
+                                translated = str(data[key])
+                                if translated and translated != ingredient_name:
+                                    return translated
+                    elif isinstance(data, list) and len(data) > 0:
+                        first_item = data[0]
+                        if isinstance(first_item, dict):
+                            for key in ['translation', 'translated', 'value', 'text', 'name']:
+                                if key in first_item:
+                                    translated = str(first_item[key])
+                                    if translated and translated != ingredient_name:
+                                        return translated
+                        elif isinstance(first_item, str):
+                            return first_item
+                    
+                    return ingredient_name
+                else:
+                    print(f"Ошибка перевода ингредиента '{ingredient_name}': {response.status}")
+                    return ingredient_name
+    except Exception as e:
+        print(f"Ошибка перевода ингредиента '{ingredient_name}': {e}")
+        return ingredient_name
+
+
+async def get_item_type_from_translations_service(item_name: str) -> str:
+    """Получает тип объекта из микросервиса переводов по его названию
+    
+    Args:
+        item_name: Название объекта
+    
+    Returns:
+        str: Тип объекта или пустая строка, если не найден
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{TRANSLATIONS_SERVICE_URL}/Translations/Alls/V0Get",
+                params={"target": "type", "term": item_name}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if isinstance(data, dict):
+                        for key in ['type', 'category', 'value']:
+                            if key in data:
+                                return str(data[key])
+                    elif isinstance(data, list) and len(data) > 0:
+                        first_item = data[0]
+                        if isinstance(first_item, dict):
+                            for key in ['type', 'category', 'value']:
+                                if key in first_item:
+                                    return str(first_item[key])
+                        elif isinstance(first_item, str):
+                            return first_item
+    except Exception as e:
+        print(f"Ошибка получения типа для '{item_name}': {e}")
+    
+    return ""
+
+
+async def filter_food_items(results: list) -> list:
+    """Фильтрует результаты, оставляя только еду
+    
+    Проверяет тип объекта через микросервис переводов.
+    Исключает все объекты, которые не входят в тип "Foods, Ingredients".
+    
+    Args:
+        results: Список результатов анализа
+    
+    Returns:
+        list: Отфильтрованный список, содержащий только еду
+    """
+    filtered_results = []
+    
+    for item in results:
+        food_name = item.get('food', 'неизвестно')
+        item_type = item.get('type', '')
+        
+        is_food = False
+        
+        if item_type:
+            if 'Food' in str(item_type) or 'food' in str(item_type).lower():
+                is_food = True
+        
+        if not is_food and food_name:
+            item_type_from_service = await get_item_type_from_translations_service(food_name)
+            if item_type_from_service:
+                if 'Food' in item_type_from_service or 'food' in item_type_from_service.lower():
+                    is_food = True
+                    item['type'] = item_type_from_service
+        
+        if not is_food:
+            non_food_keywords = ['bowl', 'fork', 'spoon', 'cup', 'knife', 'bottle', 
+                                'plate', 'table', 'dining table', 'glass', 'container',
+                                'dish', 'utensil', 'cutlery']
+            food_name_lower = food_name.lower()
+            
+            if not any(keyword in food_name_lower for keyword in non_food_keywords):
+                is_food = True
+        
+        if is_food:
+            filtered_results.append(item)
+        else:
+            print(f"Исключен объект (не еда): {food_name} (тип: {item_type})")
+    
+    return filtered_results
+
+
 async def send_to_grams_service(image_paths: list) -> dict:
     """Отправляет список изображений на сервис граммовки (Orchestrator)"""
     try:
@@ -215,23 +412,29 @@ async def send_to_grams_service(image_paths: list) -> dict:
 
 
 
-def format_analysis_result(modeling_data: dict) -> str:
-    """Форматирует результат анализа в нужный формат"""
+async def format_analysis_result(modeling_data: dict) -> str:
+    """Форматирует результат анализа в нужный формат с переводом ингредиентов"""
     if not modeling_data or 'results' not in modeling_data:
         return "Ошибка: не удалось получить результаты анализа"
     
     results = modeling_data['results']
+    
+    if not results:
+        return "Не найдено объектов еды на изображениях."
+    
     total_calories = 0
     total_weight = 0
     
     lines = []
     for item in results:
         food = item.get('food', 'неизвестно')
+        # Переводим название ингредиента
+        translated_food = await translate_ingredient(food)
         weight = item.get('weight', 0)
         calories = item.get('calories', 0)
         total_calories += calories
         total_weight += weight
-        lines.append(f"- {food}: {weight}~ гр. Калорий: {calories}.")
+        lines.append(f"- {translated_food}: {weight}~ гр. Калорий: {calories}.")
     
     lines.append(f"\nИтого: {total_calories}~ плотности калорий (насыщенность {total_calories} калорий, реальное количество: {total_weight})")
     
@@ -374,8 +577,13 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del user_sessions[user_id]
             return
 
-        # Форматируем и отправляем результат
-        result_text = format_analysis_result(final_result)
+        # Фильтруем результаты - оставляем только еду
+        if 'results' in final_result:
+            filtered_results = await filter_food_items(final_result['results'])
+            final_result['results'] = filtered_results
+
+        # Форматируем и отправляем результат (с переводом ингредиентов)
+        result_text = await format_analysis_result(final_result)
         await processing_msg.edit_text(result_text)
         
         # Очищаем сессию
